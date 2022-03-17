@@ -43,11 +43,9 @@
 
 extern const uint8_t qjsc_repl[];
 extern const uint32_t qjsc_repl_size;
-#ifdef CONFIG_BIGNUM
 extern const uint8_t qjsc_qjscalc[];
 extern const uint32_t qjsc_qjscalc_size;
 static int bignum_ext;
-#endif
 
 static int eval_buf(JSContext *ctx, const void *buf, int buf_len,
                     const char *filename, int eval_flags)
@@ -109,14 +107,12 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
     ctx = JS_NewContext(rt);
     if (!ctx)
         return NULL;
-#ifdef CONFIG_BIGNUM
     if (bignum_ext) {
         JS_AddIntrinsicBigFloat(ctx);
         JS_AddIntrinsicBigDecimal(ctx);
         JS_AddIntrinsicOperators(ctx);
         JS_EnableBignumExt(ctx, TRUE);
     }
-#endif
     /* system modules */
     js_init_module_std(ctx, "std");
     js_init_module_os(ctx, "os");
@@ -291,10 +287,8 @@ void help(void)
            "    --script       load as ES6 script (default=autodetect)\n"
            "-I  --include file include an additional file\n"
            "    --std          make 'std' and 'os' available to the loaded script\n"
-#ifdef CONFIG_BIGNUM
            "    --bignum       enable the bignum extensions (BigFloat, BigDecimal)\n"
            "    --qjscalc      load the QJSCalc runtime (default if invoked as qjscalc)\n"
-#endif
            "-T  --trace        trace memory allocation\n"
            "-d  --dump         dump the memory usage stats\n"
            "    --memory-limit n       limit the memory usage to 'n' bytes\n"
@@ -321,12 +315,9 @@ int main(int argc, char **argv)
     size_t memory_limit = 0;
     char *include_list[32];
     int i, include_count = 0;
-#ifdef CONFIG_BIGNUM
     int load_jscalc;
-#endif
     size_t stack_size = 0;
 
-#ifdef CONFIG_BIGNUM
     /* load jscalc runtime if invoked as 'qjscalc' */
     {
         const char *p, *exename;
@@ -336,7 +327,6 @@ int main(int argc, char **argv)
             exename = p + 1;
         load_jscalc = !strcmp(exename, "qjscalc");
     }
-#endif
 
     /* cannot use getopt because we want to pass the command line to
        the script */
@@ -415,7 +405,6 @@ int main(int argc, char **argv)
                 dump_unhandled_promise_rejection = 1;
                 continue;
             }
-#ifdef CONFIG_BIGNUM
             if (!strcmp(longopt, "bignum")) {
                 bignum_ext = 1;
                 continue;
@@ -424,7 +413,6 @@ int main(int argc, char **argv)
                 load_jscalc = 1;
                 continue;
             }
-#endif
             if (opt == 'q' || !strcmp(longopt, "quit")) {
                 empty_run++;
                 continue;
@@ -488,11 +476,9 @@ int main(int argc, char **argv)
     }
 
     if (!empty_run) {
-#ifdef CONFIG_BIGNUM
         if (load_jscalc) {
             js_std_eval_binary(ctx, qjsc_qjscalc, qjsc_qjscalc_size, 0);
         }
-#endif
         js_std_add_helpers(ctx, argc - optind, argv + optind);
 
         /* make 'std' and 'os' visible to non module code */

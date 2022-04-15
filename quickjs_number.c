@@ -280,7 +280,7 @@ JSValue js_parseInt(JSContext *ctx, JSValueConst this_val,
     str = JS_ToCString(ctx, argv[0]);
     if (!str)
         return JS_EXCEPTION;
-    if (JS_ToInt32(ctx, &radix, argv[1])) {
+    if (JS_ToInt32Ptr(ctx, &radix, argv[1])) {
         JS_FreeCString(ctx, str);
         return JS_EXCEPTION;
     }

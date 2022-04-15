@@ -39,7 +39,7 @@ static JSValue js_fib(JSContext *ctx, JSValueConst this_val,
                       int argc, JSValueConst *argv)
 {
     int n, res;
-    if (JS_ToInt32(ctx, &n, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &n, argv[0]))
         return JS_EXCEPTION;
     res = fib(n);
     return JS_NewInt32(ctx, res);

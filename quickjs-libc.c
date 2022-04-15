@@ -198,7 +198,7 @@ static JSValue js_printf_internal(JSContext *ctx,
             if (*fmt == '*') {
                 if (i >= argc)
                     goto missing;
-                if (JS_ToInt32(ctx, &int32_arg, argv[i++]))
+                if (JS_ToInt32Ptr(ctx, &int32_arg, argv[i++]))
                     goto fail;
                 q += snprintf(q, fmtbuf + sizeof(fmtbuf) - q, "%d", int32_arg);
                 fmt++;
@@ -216,7 +216,7 @@ static JSValue js_printf_internal(JSContext *ctx,
                 if (*fmt == '*') {
                     if (i >= argc)
                         goto missing;
-                    if (JS_ToInt32(ctx, &int32_arg, argv[i++]))
+                    if (JS_ToInt32Ptr(ctx, &int32_arg, argv[i++]))
                         goto fail;
                     q += snprintf(q, fmtbuf + sizeof(fmtbuf) - q, "%d", int32_arg);
                     fmt++;
@@ -253,7 +253,7 @@ static JSValue js_printf_internal(JSContext *ctx,
                     int32_arg = unicode_from_utf8((uint8_t *)string_arg, UTF8_CHAR_LEN_MAX, &p);
                     JS_FreeCString(ctx, string_arg);
                 } else {
-                    if (JS_ToInt32(ctx, &int32_arg, argv[i++]))
+                    if (JS_ToInt32Ptr(ctx, &int32_arg, argv[i++]))
                         goto fail;
                 }
                 /* handle utf-8 encoding explicitly */
@@ -602,7 +602,7 @@ static JSValue js_std_exit(JSContext *ctx, JSValueConst this_val,
                            int argc, JSValueConst *argv)
 {
     int status;
-    if (JS_ToInt32(ctx, &status, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &status, argv[0]))
         status = -1;
     exit(status);
     return JS_UNDEFINED;
@@ -817,7 +817,7 @@ static JSValue js_std_strerror(JSContext *ctx, JSValueConst this_val,
                                      int argc, JSValueConst *argv)
 {
     int err;
-    if (JS_ToInt32(ctx, &err, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &err, argv[0]))
         return JS_EXCEPTION;
     return JS_NewString(ctx, strerror(err));
 }
@@ -944,7 +944,7 @@ static JSValue js_std_fdopen(JSContext *ctx, JSValueConst this_val,
     FILE *f;
     int fd, err;
 
-    if (JS_ToInt32(ctx, &fd, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &fd, argv[0]))
         return JS_EXCEPTION;
     mode = JS_ToCString(ctx, argv[1]);
     if (!mode)
@@ -1096,7 +1096,7 @@ static JSValue js_std_file_seek(JSContext *ctx, JSValueConst this_val,
         return JS_EXCEPTION;
     if (JS_ToInt64Ext(ctx, &pos, argv[0]))
         return JS_EXCEPTION;
-    if (JS_ToInt32(ctx, &whence, argv[1]))
+    if (JS_ToInt32Ptr(ctx, &whence, argv[1]))
         return JS_EXCEPTION;
 #if defined(__linux__)
     ret = fseeko(f, pos, whence);
@@ -1266,7 +1266,7 @@ static JSValue js_std_file_putByte(JSContext *ctx, JSValueConst this_val,
     int c;
     if (!f)
         return JS_EXCEPTION;
-    if (JS_ToInt32(ctx, &c, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &c, argv[0]))
         return JS_EXCEPTION;
     c = fputc(c, f);
     return JS_NewInt32(ctx, c);
@@ -1576,10 +1576,10 @@ static JSValue js_os_open(JSContext *ctx, JSValueConst this_val,
     filename = JS_ToCString(ctx, argv[0]);
     if (!filename)
         return JS_EXCEPTION;
-    if (JS_ToInt32(ctx, &flags, argv[1]))
+    if (JS_ToInt32Ptr(ctx, &flags, argv[1]))
         goto fail;
     if (argc >= 3 && !JS_IsUndefined(argv[2])) {
-        if (JS_ToInt32(ctx, &mode, argv[2])) {
+        if (JS_ToInt32Ptr(ctx, &mode, argv[2])) {
         fail:
             JS_FreeCString(ctx, filename);
             return JS_EXCEPTION;
@@ -1601,7 +1601,7 @@ static JSValue js_os_close(JSContext *ctx, JSValueConst this_val,
                            int argc, JSValueConst *argv)
 {
     int fd, ret;
-    if (JS_ToInt32(ctx, &fd, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &fd, argv[0]))
         return JS_EXCEPTION;
     ret = js_get_errno(close(fd));
     return JS_NewInt32(ctx, ret);
@@ -1614,12 +1614,12 @@ static JSValue js_os_seek(JSContext *ctx, JSValueConst this_val,
     int64_t pos, ret;
     BOOL is_bigint;
 
-    if (JS_ToInt32(ctx, &fd, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &fd, argv[0]))
         return JS_EXCEPTION;
     is_bigint = JS_IsBigInt(argv[1]);
     if (JS_ToInt64Ext(ctx, &pos, argv[1]))
         return JS_EXCEPTION;
-    if (JS_ToInt32(ctx, &whence, argv[2]))
+    if (JS_ToInt32Ptr(ctx, &whence, argv[2]))
         return JS_EXCEPTION;
     ret = lseek(fd, pos, whence);
     if (ret == -1)
@@ -1639,7 +1639,7 @@ static JSValue js_os_read_write(JSContext *ctx, JSValueConst this_val,
     ssize_t ret;
     uint8_t *buf;
 
-    if (JS_ToInt32(ctx, &fd, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &fd, argv[0]))
         return JS_EXCEPTION;
     if (JS_ToIndex(ctx, &pos, argv[2]))
         return JS_EXCEPTION;
@@ -1661,7 +1661,7 @@ static JSValue js_os_isatty(JSContext *ctx, JSValueConst this_val,
                             int argc, JSValueConst *argv)
 {
     int fd;
-    if (JS_ToInt32(ctx, &fd, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &fd, argv[0]))
         return JS_EXCEPTION;
     return JS_NewBool(ctx, (isatty(fd) != 0));
 }
@@ -1675,7 +1675,7 @@ static JSValue js_os_ttyGetWinSize(JSContext *ctx, JSValueConst this_val,
     CONSOLE_SCREEN_BUFFER_INFO info;
     JSValue obj;
 
-    if (JS_ToInt32(ctx, &fd, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &fd, argv[0]))
         return JS_EXCEPTION;
     handle = (HANDLE)_get_osfhandle(fd);
 
@@ -1699,7 +1699,7 @@ static JSValue js_os_ttySetRaw(JSContext *ctx, JSValueConst this_val,
     int fd;
     HANDLE handle;
 
-    if (JS_ToInt32(ctx, &fd, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &fd, argv[0]))
         return JS_EXCEPTION;
     handle = (HANDLE)_get_osfhandle(fd);
     SetConsoleMode(handle, ENABLE_WINDOW_INPUT | __ENABLE_VIRTUAL_TERMINAL_INPUT);
@@ -1718,7 +1718,7 @@ static JSValue js_os_ttyGetWinSize(JSContext *ctx, JSValueConst this_val,
     struct winsize ws;
     JSValue obj;
 
-    if (JS_ToInt32(ctx, &fd, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &fd, argv[0]))
         return JS_EXCEPTION;
     if (ioctl(fd, TIOCGWINSZ, &ws) == 0 &&
         ws.ws_col >= 4 && ws.ws_row >= 4) {
@@ -1747,7 +1747,7 @@ static JSValue js_os_ttySetRaw(JSContext *ctx, JSValueConst this_val,
     struct termios tty;
     int fd;
 
-    if (JS_ToInt32(ctx, &fd, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &fd, argv[0]))
         return JS_EXCEPTION;
 
     memset(&tty, 0, sizeof(tty));
@@ -1855,7 +1855,7 @@ static JSValue js_os_setReadHandler(JSContext *ctx, JSValueConst this_val,
     int fd;
     JSValueConst func;
 
-    if (JS_ToInt32(ctx, &fd, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &fd, argv[0]))
         return JS_EXCEPTION;
     func = argv[1];
     if (JS_IsNull(func)) {
@@ -1929,7 +1929,7 @@ static JSValue js_os_signal(JSContext *ctx, JSValueConst this_val,
     if (!is_main_thread(rt))
         return JS_ThrowTypeError(ctx, "signal handler can only be set in the main thread");
 
-    if (JS_ToUint32(ctx, &sig_num, argv[0]))
+    if (JS_ToUint32Ptr(ctx, &sig_num, argv[0]))
         return JS_EXCEPTION;
     if (sig_num >= 64)
         return JS_ThrowRangeError(ctx, "invalid signal number");
@@ -2028,7 +2028,7 @@ static JSValue js_os_setTimeout(JSContext *ctx, JSValueConst this_val,
     func = argv[0];
     if (!JS_IsFunction(ctx, func))
         return JS_ThrowTypeError(ctx, "not a function");
-    if (JS_ToInt64(ctx, &delay, argv[1]))
+    if (JS_ToInt64Ptr(ctx, &delay, argv[1]))
         return JS_EXCEPTION;
     obj = JS_NewObjectClass(ctx, js_os_timer_class_id);
     if (JS_IsException(obj))
@@ -2405,7 +2405,7 @@ static JSValue js_os_mkdir(JSContext *ctx, JSValueConst this_val,
     const char *path;
 
     if (argc >= 2) {
-        if (JS_ToInt32(ctx, &mode, argv[1]))
+        if (JS_ToInt32Ptr(ctx, &mode, argv[1]))
             return JS_EXCEPTION;
     } else {
         mode = 0777;
@@ -2582,9 +2582,9 @@ static JSValue js_os_utimes(JSContext *ctx, JSValueConst this_val,
     int64_t atime, mtime;
     int ret;
 
-    if (JS_ToInt64(ctx, &atime, argv[1]))
+    if (JS_ToInt64Ptr(ctx, &atime, argv[1]))
         return JS_EXCEPTION;
-    if (JS_ToInt64(ctx, &mtime, argv[2]))
+    if (JS_ToInt64Ptr(ctx, &mtime, argv[2]))
         return JS_EXCEPTION;
     path = JS_ToCString(ctx, argv[0]);
     if (!path)
@@ -2615,7 +2615,7 @@ static JSValue js_os_sleep(JSContext *ctx, JSValueConst this_val,
     int64_t delay;
     int ret;
 
-    if (JS_ToInt64(ctx, &delay, argv[0]))
+    if (JS_ToInt64Ptr(ctx, &delay, argv[0]))
         return JS_EXCEPTION;
     if (delay < 0)
         delay = 0;
@@ -2850,7 +2850,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
     val = JS_GetPropertyStr(ctx, args, "length");
     if (JS_IsException(val))
         return JS_EXCEPTION;
-    ret = JS_ToUint32(ctx, &exec_argc, val);
+    ret = JS_ToUint32Ptr(ctx, &exec_argc, val);
     JS_FreeValue(ctx, val);
     if (ret)
         return JS_EXCEPTION;
@@ -2912,7 +2912,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
                 goto exception;
             if (!JS_IsUndefined(val)) {
                 int fd;
-                ret = JS_ToInt32(ctx, &fd, val);
+                ret = JS_ToInt32Ptr(ctx, &fd, val);
                 JS_FreeValue(ctx, val);
                 if (ret)
                     goto exception;
@@ -2934,7 +2934,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
         if (JS_IsException(val))
             goto exception;
         if (!JS_IsUndefined(val)) {
-            ret = JS_ToUint32(ctx, &uid, val);
+            ret = JS_ToUint32Ptr(ctx, &uid, val);
             JS_FreeValue(ctx, val);
             if (ret)
                 goto exception;
@@ -2944,7 +2944,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
         if (JS_IsException(val))
             goto exception;
         if (!JS_IsUndefined(val)) {
-            ret = JS_ToUint32(ctx, &gid, val);
+            ret = JS_ToUint32Ptr(ctx, &gid, val);
             JS_FreeValue(ctx, val);
             if (ret)
                 goto exception;
@@ -3037,9 +3037,9 @@ static JSValue js_os_waitpid(JSContext *ctx, JSValueConst this_val,
     int pid, status, options, ret;
     JSValue obj;
 
-    if (JS_ToInt32(ctx, &pid, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &pid, argv[0]))
         return JS_EXCEPTION;
-    if (JS_ToInt32(ctx, &options, argv[1]))
+    if (JS_ToInt32Ptr(ctx, &options, argv[1]))
         return JS_EXCEPTION;
 
     ret = waitpid(pid, &status, options);
@@ -3084,9 +3084,9 @@ static JSValue js_os_kill(JSContext *ctx, JSValueConst this_val,
 {
     int pid, sig, ret;
 
-    if (JS_ToInt32(ctx, &pid, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &pid, argv[0]))
         return JS_EXCEPTION;
-    if (JS_ToInt32(ctx, &sig, argv[1]))
+    if (JS_ToInt32Ptr(ctx, &sig, argv[1]))
         return JS_EXCEPTION;
     ret = js_get_errno(kill(pid, sig));
     return JS_NewInt32(ctx, ret);
@@ -3098,7 +3098,7 @@ static JSValue js_os_dup(JSContext *ctx, JSValueConst this_val,
 {
     int fd, ret;
 
-    if (JS_ToInt32(ctx, &fd, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &fd, argv[0]))
         return JS_EXCEPTION;
     ret = js_get_errno(dup(fd));
     return JS_NewInt32(ctx, ret);
@@ -3110,9 +3110,9 @@ static JSValue js_os_dup2(JSContext *ctx, JSValueConst this_val,
 {
     int fd, fd2, ret;
 
-    if (JS_ToInt32(ctx, &fd, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &fd, argv[0]))
         return JS_EXCEPTION;
-    if (JS_ToInt32(ctx, &fd2, argv[1]))
+    if (JS_ToInt32Ptr(ctx, &fd2, argv[1]))
         return JS_EXCEPTION;
     ret = js_get_errno(dup2(fd, fd2));
     return JS_NewInt32(ctx, ret);

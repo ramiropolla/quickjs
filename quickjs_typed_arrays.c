@@ -809,12 +809,12 @@ static JSValue js_typed_array_fill(JSContext *ctx, JSValueConst this_val,
         v64 = v;
     } else if (p->class_id <= JS_CLASS_UINT32_ARRAY) {
         uint32_t v;
-        if (JS_ToUint32(ctx, &v, argv[0]))
+        if (JS_ToUint32Ptr(ctx, &v, argv[0]))
             return JS_EXCEPTION;
         v64 = v;
     } else
     if (p->class_id <= JS_CLASS_BIG_UINT64_ARRAY) {
-        if (JS_ToBigInt64(ctx, (int64_t *)&v64, argv[0]))
+        if (JS_ToBigInt64Ptr(ctx, (int64_t *)&v64, argv[0]))
             return JS_EXCEPTION;
     } else {
         double d;
@@ -2203,11 +2203,11 @@ static JSValue js_dataview_setValue(JSContext *ctx,
     v = 0; /* avoid warning */
     v64 = 0; /* avoid warning */
     if (class_id <= JS_CLASS_UINT32_ARRAY) {
-        if (JS_ToUint32(ctx, &v, val))
+        if (JS_ToUint32Ptr(ctx, &v, val))
             return JS_EXCEPTION;
     } else
     if (class_id <= JS_CLASS_BIG_UINT64_ARRAY) {
-        if (JS_ToBigInt64(ctx, (int64_t *)&v64, val))
+        if (JS_ToBigInt64Ptr(ctx, (int64_t *)&v64, val))
             return JS_EXCEPTION;
     } else {
         double d;

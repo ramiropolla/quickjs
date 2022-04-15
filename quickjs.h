@@ -546,15 +546,19 @@ int JS_ToInt64Free(JSContext *ctx, int64_t *pres, JSValue val);
 /* return an exception if 'val' is a Number */
 int JS_ToBigInt64Free(JSContext *ctx, int64_t *pres, JSValue val);
 
-static inline int JS_ToBool    (JSContext *ctx, JSValueConst val)                 { return JS_ToBoolFree(ctx, JS_DupValue(ctx, val)); }
-static inline int JS_ToInt32   (JSContext *ctx, int32_t *pres, JSValueConst val)  { return JS_ToInt32Free(ctx, pres, JS_DupValue(ctx, val)); }
-static inline int JS_ToUint32  (JSContext *ctx, uint32_t *pres, JSValueConst val) { return JS_ToInt32Free(ctx, (int32_t *) pres, JS_DupValue(ctx, val)); }
-static inline int JS_ToInt64   (JSContext *ctx, int64_t *pres, JSValueConst val)  { return JS_ToInt64Free(ctx, pres, JS_DupValue(ctx, val)); }
-static inline int JS_ToBigInt64(JSContext *ctx, int64_t *pres, JSValueConst val)  { return JS_ToBigInt64Free(ctx, pres, JS_DupValue(ctx, val)); }
+static inline int JS_ToBool       (JSContext *ctx, JSValueConst val)                 { return JS_ToBoolFree(ctx, JS_DupValue(ctx, val)); }
+static inline int JS_ToInt32Ptr   (JSContext *ctx, int32_t  *pres, JSValueConst val) { return JS_ToInt32Free(ctx, pres, JS_DupValue(ctx, val)); }
+static inline int JS_ToUint32Ptr  (JSContext *ctx, uint32_t *pres, JSValueConst val) { return JS_ToInt32Free(ctx, (int32_t *) pres, JS_DupValue(ctx, val)); }
+static inline int JS_ToInt64Ptr   (JSContext *ctx, int64_t  *pres, JSValueConst val) { return JS_ToInt64Free(ctx, pres, JS_DupValue(ctx, val)); }
+static inline int JS_ToBigInt64Ptr(JSContext *ctx, int64_t  *pres, JSValueConst val) { return JS_ToBigInt64Free(ctx, pres, JS_DupValue(ctx, val)); }
+
+static inline  int32_t JS_ToInt32 (JSContext *ctx, JSValue val) {  int32_t i32; JS_ToInt32Ptr (ctx, &i32, val); return i32; }
+static inline uint32_t JS_ToUint32(JSContext *ctx, JSValue val) { uint32_t u32; JS_ToUint32Ptr(ctx, &u32, val); return u32; }
+static inline  int64_t JS_ToInt64 (JSContext *ctx, JSValue val) {  int64_t i64; JS_ToInt64Ptr (ctx, &i64, val); return i64; }
 
 int JS_ToIndex(JSContext *ctx, uint64_t *plen, JSValueConst val);
 int JS_ToFloat64(JSContext *ctx, double *pres, JSValueConst val);
-/* same as JS_ToInt64() but allow BigInt */
+/* same as JS_ToInt64Ptr() but allow BigInt */
 int JS_ToInt64Ext(JSContext *ctx, int64_t *pres, JSValueConst val);
 
 JSValue JS_NewStringLen(JSContext *ctx, const char *str1, size_t len1);

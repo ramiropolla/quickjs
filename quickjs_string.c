@@ -647,7 +647,7 @@ static JSValue js_string_fromCharCode(JSContext *ctx, JSValueConst this_val,
 
     for(i = 0; i < argc; i++) {
         int32_t c;
-        if (JS_ToInt32(ctx, &c, argv[i]) || string_buffer_putc16(b, c & 0xffff)) {
+        if (JS_ToInt32Ptr(ctx, &c, argv[i]) || string_buffer_putc16(b, c & 0xffff)) {
             string_buffer_free(b);
             return JS_EXCEPTION;
         }
@@ -736,8 +736,8 @@ JSValue js_string_codePointRange(JSContext *ctx, JSValueConst this_val,
     uint32_t start, end, i, n;
     StringBuffer b_s, *b = &b_s;
 
-    if (JS_ToUint32(ctx, &start, argv[0]) ||
-        JS_ToUint32(ctx, &end, argv[1]))
+    if (JS_ToUint32Ptr(ctx, &start, argv[0]) ||
+        JS_ToUint32Ptr(ctx, &end, argv[1]))
         return JS_EXCEPTION;
     end = min_uint32(end, 0x10ffff + 1);
 
@@ -1154,7 +1154,7 @@ JSValue js_string___GetSubstitution(JSContext *ctx, JSValueConst this_val,
     }
     if (js_get_length32(ctx, &matched_len, matched))
         goto exception;
-    if (JS_ToUint32(ctx, &position, argv[2]) < 0)
+    if (JS_ToUint32Ptr(ctx, &position, argv[2]) < 0)
         goto exception;
 
     len = rp->len;
@@ -1381,7 +1381,7 @@ static JSValue js_string_split(JSContext *ctx, JSValueConst this_val,
     if (JS_IsUndefined(limit)) {
         lim = 0xffffffff;
     } else {
-        if (JS_ToUint32(ctx, &lim, limit) < 0)
+        if (JS_ToUint32Ptr(ctx, &lim, limit) < 0)
             goto exception;
     }
     sp = JS_VALUE_GET_STRING(S);

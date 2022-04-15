@@ -100,7 +100,7 @@ int set_array_length(JSContext *ctx, JSObject *p, JSValue val, int flags)
     } else {
         /* Note: length is always a uint32 because the object is an
            array */
-        JS_ToUint32(ctx, &cur_len, p->prop[0].u.value);
+        JS_ToUint32Ptr(ctx, &cur_len, p->prop[0].u.value);
         if (len < cur_len) {
             uint32_t d;
             JSShape *sh;

@@ -180,9 +180,9 @@ static JSValue js_math_imul(JSContext *ctx, JSValueConst this_val,
 {
     int a, b;
 
-    if (JS_ToInt32(ctx, &a, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &a, argv[0]))
         return JS_EXCEPTION;
-    if (JS_ToInt32(ctx, &b, argv[1]))
+    if (JS_ToInt32Ptr(ctx, &b, argv[1]))
         return JS_EXCEPTION;
     /* purposely ignoring overflow */
     return JS_NewInt32(ctx, a * b);
@@ -193,7 +193,7 @@ static JSValue js_math_clz32(JSContext *ctx, JSValueConst this_val,
 {
     uint32_t a, r;
 
-    if (JS_ToUint32(ctx, &a, argv[0]))
+    if (JS_ToUint32Ptr(ctx, &a, argv[0]))
         return JS_EXCEPTION;
     if (a == 0)
         r = 32;

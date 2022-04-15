@@ -600,7 +600,7 @@ static JSValue js_agent_broadcast(JSContext *ctx, JSValue this_val,
     buf = JS_GetArrayBuffer(ctx, &buf_size, sab);
     if (!buf)
         return JS_EXCEPTION;
-    if (JS_ToInt32(ctx, &val, argv[1]))
+    if (JS_ToInt32Ptr(ctx, &val, argv[1]))
         return JS_EXCEPTION;
 
     /* broadcast the values and wait until all agents have started
@@ -642,7 +642,7 @@ static JSValue js_agent_sleep(JSContext *ctx, JSValue this_val,
                               int argc, JSValue *argv)
 {
     uint32_t duration;
-    if (JS_ToUint32(ctx, &duration, argv[0]))
+    if (JS_ToUint32Ptr(ctx, &duration, argv[0]))
         return JS_EXCEPTION;
     usleep(duration * 1000);
     return JS_UNDEFINED;

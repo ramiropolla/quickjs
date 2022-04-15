@@ -119,21 +119,21 @@ static JSValue js_atomics_op(JSContext *ctx,
     } else {
         if (size_log2 == 3) {
             int64_t v64;
-            if (JS_ToBigInt64(ctx, &v64, argv[2]))
+            if (JS_ToBigInt64Ptr(ctx, &v64, argv[2]))
                 return JS_EXCEPTION;
             v = v64;
             if (op == ATOMICS_OP_COMPARE_EXCHANGE) {
-                if (JS_ToBigInt64(ctx, &v64, argv[3]))
+                if (JS_ToBigInt64Ptr(ctx, &v64, argv[3]))
                     return JS_EXCEPTION;
                 rep_val = v64;
             }
         } else {
                 uint32_t v32;
-                if (JS_ToUint32(ctx, &v32, argv[2]))
+                if (JS_ToUint32Ptr(ctx, &v32, argv[2]))
                     return JS_EXCEPTION;
                 v = v32;
                 if (op == ATOMICS_OP_COMPARE_EXCHANGE) {
-                    if (JS_ToUint32(ctx, &v32, argv[3]))
+                    if (JS_ToUint32Ptr(ctx, &v32, argv[3]))
                         return JS_EXCEPTION;
                     rep_val = v32;
                 }
@@ -260,7 +260,7 @@ static JSValue js_atomics_store(JSContext *ctx,
         ret = JS_ToBigIntValueFree(ctx, JS_DupValue(ctx, argv[2]));
         if (JS_IsException(ret))
             return ret;
-        if (JS_ToBigInt64(ctx, &v64, ret)) {
+        if (JS_ToBigInt64Ptr(ctx, &v64, ret)) {
             JS_FreeValue(ctx, ret);
             return JS_EXCEPTION;
         }
@@ -273,7 +273,7 @@ static JSValue js_atomics_store(JSContext *ctx,
         ret = JS_ToIntegerFree(ctx, JS_DupValue(ctx, argv[2]));
         if (JS_IsException(ret))
             return ret;
-        if (JS_ToUint32(ctx, &v, ret)) {
+        if (JS_ToUint32Ptr(ctx, &v, ret)) {
             JS_FreeValue(ctx, ret);
             return JS_EXCEPTION;
         }
@@ -336,10 +336,10 @@ static JSValue js_atomics_wait(JSContext *ctx,
     if (!ptr)
         return JS_EXCEPTION;
     if (size_log2 == 3) {
-        if (JS_ToBigInt64(ctx, &v, argv[2]))
+        if (JS_ToBigInt64Ptr(ctx, &v, argv[2]))
             return JS_EXCEPTION;
     } else {
-        if (JS_ToInt32(ctx, &v32, argv[2]))
+        if (JS_ToInt32Ptr(ctx, &v32, argv[2]))
             return JS_EXCEPTION;
         v = v32;
     }

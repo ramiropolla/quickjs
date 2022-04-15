@@ -1305,7 +1305,7 @@ static JSValue js_regexp_Symbol_split(JSContext *ctx, JSValueConst this_val,
     if (JS_IsUndefined(argv[1])) {
         lim = 0xffffffff;
     } else {
-        if (JS_ToUint32(ctx, &lim, argv[1]) < 0)
+        if (JS_ToUint32Ptr(ctx, &lim, argv[1]) < 0)
             goto exception;
         if (lim == 0)
             goto done;

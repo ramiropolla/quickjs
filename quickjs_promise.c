@@ -1253,7 +1253,7 @@ static JSValue js_promise_all_resolve_element(JSContext *ctx,
     JSValue ret, obj;
     int is_zero, index;
 
-    if (JS_ToInt32(ctx, &index, func_data[1]))
+    if (JS_ToInt32Ptr(ctx, &index, func_data[1]))
         return JS_EXCEPTION;
     if (alreadyCalled)
         return JS_UNDEFINED;

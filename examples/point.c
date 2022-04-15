@@ -53,9 +53,9 @@ static JSValue js_point_ctor(JSContext *ctx,
     s = js_mallocz(ctx, sizeof(*s));
     if (!s)
         return JS_EXCEPTION;
-    if (JS_ToInt32(ctx, &s->x, argv[0]))
+    if (JS_ToInt32Ptr(ctx, &s->x, argv[0]))
         goto fail;
-    if (JS_ToInt32(ctx, &s->y, argv[1]))
+    if (JS_ToInt32Ptr(ctx, &s->y, argv[1]))
         goto fail;
     /* using new_target to get the prototype is necessary when the
        class is extended. */
@@ -91,7 +91,7 @@ static JSValue js_point_set_xy(JSContext *ctx, JSValueConst this_val, JSValue va
     int v;
     if (!s)
         return JS_EXCEPTION;
-    if (JS_ToInt32(ctx, &v, val))
+    if (JS_ToInt32Ptr(ctx, &v, val))
         return JS_EXCEPTION;
     if (magic == 0)
         s->x = v;

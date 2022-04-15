@@ -520,7 +520,7 @@ static JSValue js_bigfloat_parseFloat(JSContext *ctx, JSValueConst this_val,
     str = JS_ToCString(ctx, argv[0]);
     if (!str)
         return JS_EXCEPTION;
-    if (JS_ToInt32(ctx, &radix, argv[1])) {
+    if (JS_ToInt32Ptr(ctx, &radix, argv[1])) {
     fail:
         JS_FreeCString(ctx, str);
         return JS_EXCEPTION;
@@ -1210,9 +1210,9 @@ static no_inline int js_mul_pow10(JSContext *ctx, JSValue *sp)
     if (!a)
         return -1;
     if (JS_IsBigInt(op2)) {
-        ret = JS_ToBigInt64(ctx, &e, op2);
+        ret = JS_ToBigInt64Ptr(ctx, &e, op2);
     } else {
-        ret = JS_ToInt64(ctx, &e, op2);
+        ret = JS_ToInt64Ptr(ctx, &e, op2);
     }
     if (ret) {
         if (a == &a_s)

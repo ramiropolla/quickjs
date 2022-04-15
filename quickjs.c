@@ -3859,7 +3859,7 @@ static int JS_CreateProperty(JSContext *ctx, JSObject *p,
             generic_array:
                 /* update the length field */
                 plen = &p->prop[0];
-                JS_ToUint32(ctx, &len, plen->u.value);
+                JS_ToUint32Ptr(ctx, &len, plen->u.value);
                 if ((idx + 1) > len) {
                     pslen = get_shape_prop(p->shape);
                     if (unlikely(!(pslen->flags & JS_PROP_WRITABLE)))
@@ -4995,9 +4995,9 @@ int JS_ToInt64Free(JSContext *ctx, int64_t *pres, JSValue val)
 int JS_ToInt64Ext(JSContext *ctx, int64_t *pres, JSValueConst val)
 {
     if (JS_IsBigInt(val))
-        return JS_ToBigInt64(ctx, pres, val);
+        return JS_ToBigInt64Ptr(ctx, pres, val);
     else
-        return JS_ToInt64(ctx, pres, val);
+        return JS_ToInt64Ptr(ctx, pres, val);
 }
 
 /* return (<0, 0) in case of exception */
@@ -5168,7 +5168,7 @@ __exception int JS_ToArrayLengthFree(JSContext *ctx, uint32_t *plen,
                     return -1;
             } else {
                 /* legacy behavior: must do the conversion twice and compare */
-                if (JS_ToUint32(ctx, &len, val)) {
+                if (JS_ToUint32Ptr(ctx, &len, val)) {
                     JS_FreeValue(ctx, val);
                     return -1;
                 }

@@ -161,7 +161,45 @@ endif
 
 all: $(OBJDIR) $(PROGS)
 
-QJS_LIB_OBJS=$(OBJDIR)/quickjs.o $(OBJDIR)/libregexp.o $(OBJDIR)/libunicode.o $(OBJDIR)/cutils.o $(OBJDIR)/quickjs-libc.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_array.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_atom.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_atomics.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_bigdecimal.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_bigfloat.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_bigint.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_binary_object.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_boolean.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_call.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_date.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_error.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_eval.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_function.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_generators.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_global.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_iterator.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_json.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_jsparser.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_map.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_math.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_mem.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_module.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_number.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_object.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_operators.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_promise.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_proxy.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_reflect.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_regexp.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_shape.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_string.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_symbol.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_typed_arrays.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs_xtoa.o
+QJS_LIB_OBJS += $(OBJDIR)/libregexp.o
+QJS_LIB_OBJS += $(OBJDIR)/libunicode.o
+QJS_LIB_OBJS += $(OBJDIR)/cutils.o
+QJS_LIB_OBJS += $(OBJDIR)/quickjs-libc.o
 
 QJS_OBJS=$(OBJDIR)/qjs.o $(OBJDIR)/repl.o $(QJS_LIB_OBJS)
 QJS_LIB_OBJS+=$(OBJDIR)/libbf.o

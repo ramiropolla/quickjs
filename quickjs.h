@@ -472,6 +472,8 @@ static js_force_inline JSValue JS_NewFloat64(JSContext *ctx, double d)
     return v;
 }
 
+static inline JS_BOOL JS_IsInt32        (JSValueConst v) { int tag = JS_VALUE_GET_TAG(v); return tag == JS_TAG_INT; }
+static inline JS_BOOL JS_IsFloat64      (JSValueConst v) { int tag = JS_VALUE_GET_TAG(v); return JS_TAG_IS_FLOAT64(tag); }
 static inline JS_BOOL JS_IsNumber       (JSValueConst v) { int tag = JS_VALUE_GET_TAG(v); return tag == JS_TAG_INT || JS_TAG_IS_FLOAT64(tag); }
 static inline JS_BOOL JS_IsBigInt       (JSValueConst v) { int tag = JS_VALUE_GET_TAG(v); return tag == JS_TAG_BIG_INT; }
 static inline JS_BOOL JS_IsBigFloat     (JSValueConst v) { int tag = JS_VALUE_GET_TAG(v); return tag == JS_TAG_BIG_FLOAT; }

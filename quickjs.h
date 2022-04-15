@@ -89,6 +89,7 @@ typedef struct JSRefCountHeader {
 
 typedef union JSValueUnion {
     int32_t int32;
+    int64_t int64;
     double float64;
     void *ptr;
 } JSValueUnion;
@@ -108,7 +109,10 @@ typedef struct JSValue {
 #define JS_VALUE_GET_FLOAT64(v) ((v).u.float64)
 #define JS_VALUE_GET_PTR(v) ((v).u.ptr)
 
-#define JS_MKVAL(tag, val) (JSValue){ (JSValueUnion){ .int32 = val }, tag }
+/* ffglitch: write int64_t instead of int32_t (even if the value is
+ *           just an int32_t) so that there is no 32-bit hole, and a
+ *           movsxd can be used. 11% speedup in general. */
+#define JS_MKVAL(tag, val) (JSValue){ (JSValueUnion){ .int64 = (int32_t) val }, tag }
 #define JS_MKPTR(tag, p) (JSValue){ (JSValueUnion){ .ptr = p }, tag }
 
 #define JS_TAG_IS_FLOAT64(tag) ((unsigned)(tag) == JS_TAG_FLOAT64)

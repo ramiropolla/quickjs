@@ -92,8 +92,6 @@ static int js_shape_prepare_update(JSContext *ctx, JSObject *p,
                                    JSShapeProperty **pprs);
 static __exception int js_get_length32(JSContext *ctx, uint32_t *pres,
                                        JSValueConst obj);
-static BOOL js_get_fast_array(JSContext *ctx, JSValueConst obj,
-                              JSValue **arrpp, uint32_t *countp);
 static void js_c_function_data_finalizer(JSRuntime *rt, JSValue val);
 static void js_c_function_data_mark(JSRuntime *rt, JSValueConst val,
                                     JS_MarkFunc *mark_func);

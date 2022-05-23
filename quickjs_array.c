@@ -50,6 +50,65 @@ const JSClassExoticMethods js_arguments_exotic_methods = {
     .define_own_property = js_arguments_define_own_property,
 };
 
+/* FastArray */
+
+JSValue JS_NewFastArray(JSContext *ctx, JSValue **parray, uint32_t len)
+{
+    JSValue *new_array_prop;
+    JSObject *p;
+    size_t slack;
+
+    /* create new array */
+    JSValue val = JS_NewObjectFromShape(ctx, js_dup_shape(ctx->fast_array_shape),
+                                        JS_CLASS_FAST_ARRAY);
+    if ( JS_IsException(val) )
+        return val;
+    p = JS_VALUE_GET_OBJ(val);
+
+    /* allocate array values */
+    new_array_prop = js_realloc2(ctx, p->u.array.u.values, sizeof(JSValue) * len, &slack);
+    if ( !new_array_prop )
+    {
+        JS_FreeValue(ctx, val);
+        return JS_EXCEPTION;
+    }
+    for ( size_t i = 0; i < len; i++ )
+        new_array_prop[i] = JS_UNDEFINED;
+
+    p->prop[0].u.value = JS_NewInt32(ctx, len);
+    p->u.array.u.values = new_array_prop;
+    p->u.array.u1.size = len + (slack / sizeof(*new_array_prop));
+    p->u.array.count = len;
+
+    *parray = p->u.array.u.values;
+
+    return val;
+}
+
+int JS_GetFastArray(JSValueConst val, JSValue **parray, uint32_t *plen)
+{
+    JSObject *p = JS_VALUE_GET_OBJ(val);
+    if ( p->class_id != JS_CLASS_FAST_ARRAY )
+        return FALSE;
+    *parray = p->u.array.u.values;
+    *plen = p->u.array.count;
+    return TRUE;
+}
+
+int JS_IsFastArray(JSContext *ctx, JSValueConst val)
+{
+    JSObject *p;
+    if (JS_VALUE_GET_TAG(val) == JS_TAG_OBJECT) {
+        p = JS_VALUE_GET_OBJ(val);
+        if (unlikely(p->class_id == JS_CLASS_PROXY))
+            return js_proxy_isFastArray(ctx, val);
+        else
+            return (p->class_id == JS_CLASS_FAST_ARRAY);
+    } else {
+        return FALSE;
+    }
+}
+
 /* Array */
 
 void js_array_finalizer(JSRuntime *rt, JSValue val)
@@ -183,12 +242,10 @@ static int expand_fast_array(JSContext *ctx, JSObject *p, uint32_t new_len)
 
 /* Preconditions: 'p' must be of class JS_CLASS_ARRAY, p->fast_array =
    TRUE and p->extensible = TRUE */
-int add_fast_array_element(JSContext *ctx, JSObject *p, JSValue val, int flags)
+int add_fast_array_element_internal(JSContext *ctx, JSObject *p, uint32_t new_len, JSValue val, int flags)
 {
-    uint32_t new_len, array_len;
-    /* extend the array by one */
+    uint32_t array_len;
     /* XXX: convert to slow array if new_len > 2^31-1 elements */
-    new_len = p->u.array.count + 1;
     /* update the length if necessary. We assume that if the length is
        not an integer, then if it >= 2^31.  */
     if (likely(JS_VALUE_GET_TAG(p->prop[0].u.value) == JS_TAG_INT)) {
@@ -207,9 +264,20 @@ int add_fast_array_element(JSContext *ctx, JSObject *p, JSValue val, int flags)
             return -1;
         }
     }
+    for ( uint32_t i = p->u.array.count; i + 1 < new_len; i++ )
+        p->u.array.u.values[i] = JS_UNDEFINED;
     p->u.array.u.values[new_len - 1] = val;
     p->u.array.count = new_len;
     return TRUE;
+}
+
+int add_fast_array_element(JSContext *ctx, JSObject *p, JSValue val, int flags)
+{
+    uint32_t new_len;
+    /* extend the array by one */
+    /* XXX: convert to slow array if new_len > 2^31-1 elements */
+    new_len = p->u.array.count + 1;
+    return add_fast_array_element_internal(ctx, p, new_len, val, flags);
 }
 
 static int JS_CopySubArray(JSContext *ctx,
@@ -220,11 +288,14 @@ static int JS_CopySubArray(JSContext *ctx,
     int64_t i, from, to, len;
     JSValue val;
     int fromPresent;
+    BOOL is_fast_array = FALSE;
 
     p = NULL;
     if (JS_VALUE_GET_TAG(obj) == JS_TAG_OBJECT) {
         p = JS_VALUE_GET_OBJ(obj);
-        if (p->class_id != JS_CLASS_ARRAY || !p->fast_array) {
+        is_fast_array = (p->class_id == JS_CLASS_FAST_ARRAY)
+                     || ((p->class_id == JS_CLASS_ARRAY) && p->fast_array);
+        if (!is_fast_array) {
             p = NULL;
         }
     }
@@ -237,7 +308,7 @@ static int JS_CopySubArray(JSContext *ctx,
             from = from_pos + i;
             to = to_pos + i;
         }
-        if (p && p->fast_array &&
+        if (is_fast_array &&
             from >= 0 && from < (len = p->u.array.count)  &&
             to >= 0 && to < len) {
             int64_t l, j;
@@ -282,13 +353,13 @@ static int JS_CopySubArray(JSContext *ctx,
     return -1;
 }
 
-static JSValue js_array_constructor(JSContext *ctx, JSValueConst new_target,
-                                    int argc, JSValueConst *argv)
+static JSValue js_array_constructor_internal(JSContext *ctx, JSValueConst new_target,
+                                             int argc, JSValueConst *argv, int class_id)
 {
     JSValue obj;
     int i;
 
-    obj = js_create_from_ctor(ctx, new_target, JS_CLASS_ARRAY);
+    obj = js_create_from_ctor(ctx, new_target, class_id);
     if (JS_IsException(obj))
         return obj;
     if (argc == 1 && JS_IsNumber(argv[0])) {
@@ -298,9 +369,27 @@ static JSValue js_array_constructor(JSContext *ctx, JSValueConst new_target,
         if (JS_SetProperty(ctx, obj, JS_ATOM_length, JS_NewUint32(ctx, len)) < 0)
             goto fail;
     } else {
-        for(i = 0; i < argc; i++) {
-            if (JS_SetPropertyUint32(ctx, obj, i, JS_DupValue(ctx, argv[i])) < 0)
-                goto fail;
+        if ( class_id == JS_CLASS_FAST_ARRAY )
+        {
+            if ( argc > 0 )
+            {
+                JSObject *p = JS_VALUE_GET_OBJ(obj);
+                JSValue *arrp;
+                if (expand_fast_array(ctx, p, argc))
+                    goto fail;
+                arrp = p->u.array.u.values;
+                for ( i = 0; i < argc; i++ )
+                    arrp[i] = JS_DupValue(ctx, argv[i]);
+                p->u.array.count = argc;
+                p->prop[0].u.value = JS_NewInt32(ctx, argc);
+            }
+        }
+        else
+        {
+            for(i = 0; i < argc; i++) {
+                if (JS_SetPropertyUint32(ctx, obj, i, JS_DupValue(ctx, argv[i])) < 0)
+                    goto fail;
+            }
         }
     }
     return obj;
@@ -309,8 +398,20 @@ fail:
     return JS_EXCEPTION;
 }
 
-static JSValue js_array_from(JSContext *ctx, JSValueConst this_val,
-                             int argc, JSValueConst *argv)
+static JSValue js_array_constructor(JSContext *ctx, JSValueConst new_target,
+                                    int argc, JSValueConst *argv)
+{
+    return js_array_constructor_internal(ctx, new_target, argc, argv, JS_CLASS_ARRAY);
+}
+
+static JSValue js_fast_array_constructor(JSContext *ctx, JSValueConst new_target,
+                                         int argc, JSValueConst *argv)
+{
+    return js_array_constructor_internal(ctx, new_target, argc, argv, JS_CLASS_FAST_ARRAY);
+}
+
+static JSValue js_array_from_internal(JSContext *ctx, JSValueConst this_val,
+                                      int argc, JSValueConst *argv, int class_id)
 {
     // from(items, mapfn = void 0, this_arg = void 0)
     JSValueConst items = argv[0], mapfn, this_arg;
@@ -345,6 +446,8 @@ static JSValue js_array_from(JSContext *ctx, JSValueConst this_val,
         JS_FreeValue(ctx, iter);
         if (JS_IsConstructor(ctx, this_val))
             r = JS_CallConstructor(ctx, this_val, 0, NULL);
+        else if ( class_id == JS_CLASS_FAST_ARRAY )
+            r = JS_NewFastArray(ctx, NULL, 0);
         else
             r = JS_NewArray(ctx);
         if (JS_IsException(r))
@@ -422,21 +525,38 @@ static JSValue js_array_from(JSContext *ctx, JSValueConst this_val,
     return r;
 }
 
+static JSValue js_array_from(JSContext *ctx, JSValueConst this_val,
+                             int argc, JSValueConst *argv)
+{
+    return js_array_from_internal(ctx, this_val, argc, argv, JS_CLASS_ARRAY);
+}
+
+static JSValue js_fast_array_from(JSContext *ctx, JSValueConst this_val,
+                                  int argc, JSValueConst *argv)
+{
+    return js_array_from_internal(ctx, this_val, argc, argv, JS_CLASS_FAST_ARRAY);
+}
+
 static JSValue js_array_of(JSContext *ctx, JSValueConst this_val,
                            int argc, JSValueConst *argv)
 {
     JSValue obj, args[1];
+    JSObject *p;
     int i;
 
+    p = JS_VALUE_GET_OBJ(this_val);
     if (JS_IsConstructor(ctx, this_val)) {
         args[0] = JS_NewInt32(ctx, argc);
         obj = JS_CallConstructor(ctx, this_val, 1, (JSValueConst *)args);
+    } else if ( p->class_id == JS_CLASS_FAST_ARRAY ) {
+        obj = JS_NewFastArray(ctx, NULL, 0);
     } else {
         obj = JS_NewArray(ctx);
     }
     if (JS_IsException(obj))
         return JS_EXCEPTION;
     for(i = 0; i < argc; i++) {
+        // FIXME fast array optimize?
         if (JS_CreateDataPropertyUint32(ctx, obj, i, JS_DupValue(ctx, argv[i]),
                                         JS_PROP_THROW) < 0) {
             goto fail;
@@ -461,18 +581,41 @@ static JSValue js_array_isArray(JSContext *ctx, JSValueConst this_val,
         return JS_NewBool(ctx, ret);
 }
 
-static JSValue JS_ArraySpeciesCreate(JSContext *ctx, JSValueConst obj,
-                                     JSValueConst len_val)
+static JSValue js_fast_array_isArray(JSContext *ctx, JSValueConst this_val,
+                                     int argc, JSValueConst *argv)
 {
+    int ret;
+    ret = JS_IsArray(ctx, argv[0]);
+    if (ret < 0)
+        return JS_EXCEPTION;
+    else
+        return JS_NewBool(ctx, ret);
+}
+
+static JSValue JS_ArraySpeciesCreate(JSContext *ctx, JSValueConst obj,
+                                    JSValueConst len_val)
+{
+    JSObject *p = JS_VALUE_GET_OBJ(obj);
     JSValue ctor, ret, species;
     int res;
     JSContext *realm;
 
-    res = JS_IsArray(ctx, obj);
+    switch ( p->class_id )
+    {
+        case JS_CLASS_FAST_ARRAY: res = JS_IsFastArray(ctx, obj); break;
+        default:                  res = JS_IsArray(ctx, obj);     break;
+    }
     if (res < 0)
         return JS_EXCEPTION;
     if (!res)
-        return js_array_constructor(ctx, JS_UNDEFINED, 1, &len_val);
+    {
+use_default_constructor:
+        switch ( p->class_id )
+        {
+            case JS_CLASS_FAST_ARRAY: return js_fast_array_constructor(ctx, JS_UNDEFINED, 1, &len_val);
+            default:                  return js_array_constructor(ctx, JS_UNDEFINED, 1, &len_val);
+        }
+    }
     ctor = JS_GetProperty(ctx, obj, JS_ATOM_constructor);
     if (JS_IsException(ctor))
         return ctor;
@@ -499,7 +642,7 @@ static JSValue JS_ArraySpeciesCreate(JSContext *ctx, JSValueConst obj,
             ctor = JS_UNDEFINED;
     }
     if (JS_IsUndefined(ctor)) {
-        return js_array_constructor(ctx, JS_UNDEFINED, 1, &len_val);
+        goto use_default_constructor;
     } else {
         ret = JS_CallConstructor(ctx, ctor, 1, &len_val);
         JS_FreeValue(ctx, ctor);
@@ -510,6 +653,13 @@ static JSValue JS_ArraySpeciesCreate(JSContext *ctx, JSValueConst obj,
 static const JSCFunctionListEntry js_array_funcs[] = {
     JS_CFUNC_DEF("isArray", 1, js_array_isArray ),
     JS_CFUNC_DEF("from", 1, js_array_from ),
+    JS_CFUNC_DEF("of", 0, js_array_of ),
+    JS_CGETSET_DEF("[Symbol.species]", js_get_this, NULL ),
+};
+
+static const JSCFunctionListEntry js_fast_array_funcs[] = {
+    JS_CFUNC_DEF("isArray", 1, js_fast_array_isArray ),
+    JS_CFUNC_DEF("from", 1, js_fast_array_from ),
     JS_CFUNC_DEF("of", 0, js_array_of ),
     JS_CGETSET_DEF("[Symbol.species]", js_get_this, NULL ),
 };
@@ -532,9 +682,8 @@ static JSValue js_array_concat(JSContext *ctx, JSValueConst this_val,
                                int argc, JSValueConst *argv)
 {
     JSValue obj, arr, val;
-    JSValueConst e;
-    int64_t len, k, n;
-    int i, res;
+    int64_t len, n;
+    int res;
 
     arr = JS_UNDEFINED;
     obj = JS_ToObject(ctx, this_val);
@@ -545,39 +694,52 @@ static JSValue js_array_concat(JSContext *ctx, JSValueConst this_val,
     if (JS_IsException(arr))
         goto exception;
     n = 0;
-    for (i = -1; i < argc; i++) {
-        if (i < 0)
-            e = obj;
-        else
-            e = argv[i];
+    for ( int i = -1; i < argc; i++ )
+    {
+        JSValueConst e = (i < 0) ? obj : argv[i];
 
         res = JS_isConcatSpreadable(ctx, e);
         if (res < 0)
             goto exception;
         if (res) {
+            JSObject *parr = JS_VALUE_GET_OBJ(arr);
+            JSObject *pe = JS_VALUE_GET_OBJ(e);
             if (js_get_length64(ctx, &len, e))
                 goto exception;
             if (n + len > MAX_SAFE_INTEGER) {
+array_too_long:
                 JS_ThrowTypeError(ctx, "Array loo long");
                 goto exception;
             }
-            for (k = 0; k < len; k++, n++) {
-                res = JS_TryGetPropertyInt64(ctx, e, k, &val);
-                if (res < 0)
+            if ( parr->fast_array && pe->fast_array )
+            {
+                if ( expand_fast_array(ctx, parr, n + len) )
                     goto exception;
-                if (res) {
-                    if (JS_DefinePropertyValueInt64(ctx, arr, n, val,
-                                                    JS_PROP_C_W_E | JS_PROP_THROW) < 0)
+                for ( int k = 0; k < len; k++, n++ )
+                {
+                    set_value(ctx, &parr->u.array.u.values[n],
+                              JS_DupValue(ctx, pe->u.array.u.values[k]));
+                }
+            }
+            else
+            {
+                for ( int k = 0; k < len; k++, n++ )
+                {
+                    res = JS_TryGetPropertyInt64(ctx, e, k, &val);
+                    if ( res < 0 )
                         goto exception;
+                    if ( res ) {
+                        if ( JS_DefinePropertyValueInt64(ctx, arr, n, val,
+                                                         JS_PROP_C_W_E | JS_PROP_THROW) < 0 )
+                            goto exception;
+                    }
                 }
             }
         } else {
-            if (n >= MAX_SAFE_INTEGER) {
-                JS_ThrowTypeError(ctx, "Array loo long");
-                goto exception;
-            }
-            if (JS_DefinePropertyValueInt64(ctx, arr, n, JS_DupValue(ctx, e),
-                                            JS_PROP_C_W_E | JS_PROP_THROW) < 0)
+            if ( n >= MAX_SAFE_INTEGER )
+                goto array_too_long;
+            if ( JS_DefinePropertyValueInt64(ctx, arr, n, JS_DupValue(ctx, e),
+                                             JS_PROP_C_W_E | JS_PROP_THROW) < 0 )
                 goto exception;
             n++;
         }
@@ -860,6 +1022,7 @@ static JSValue js_array_fill(JSContext *ctx, JSValueConst this_val,
     }
 
     /* XXX: should special case fast arrays */
+    // FIXME fast array
     while (start < end) {
         if (JS_SetPropertyInt64(ctx, obj, start,
                                 JS_DupValue(ctx, argv[0])) < 0)
@@ -990,6 +1153,7 @@ static JSValue js_array_lastIndexOf(JSContext *ctx, JSValueConst this_val,
                 goto exception;
         }
         /* XXX: should special case fast arrays */
+        // FIXME fast array
         for (; n >= 0; n--) {
             present = JS_TryGetPropertyInt64(ctx, obj, n, &val);
             if (present < 0)
@@ -1167,7 +1331,10 @@ JSValue js_array_pop(JSContext *ctx, JSValueConst this_val,
     if (len > 0) {
         newLen = len - 1;
         /* Special case fast arrays */
-        if (js_get_fast_array(ctx, obj, &arrp, &count32) && count32 == len) {
+        if (js_get_fast_array(ctx, obj, &arrp, &count32)) {
+            /* FIXME when can count32 not equal len? */
+            if ( count32 != len )
+                assert(0);
             JSObject *p = JS_VALUE_GET_OBJ(obj);
             if (shift) {
                 res = arrp[0];
@@ -1226,10 +1393,27 @@ JSValue js_array_push(JSContext *ctx, JSValueConst this_val,
             goto exception;
         from = 0;
     }
-    for(i = 0; i < argc; i++) {
-        if (JS_SetPropertyInt64(ctx, obj, from + i,
-                                JS_DupValue(ctx, argv[i])) < 0)
+#if 0
+    if ( p->fast_array )
+    {
+        uint32_t old_len = p->u.array.count;
+        JSValue *arrp;
+        if (expand_fast_array(ctx, p, old_len + argc))
             goto exception;
+        arrp = p->u.array.u.values;
+        for ( i = 0; i < argc; i++ )
+            arrp[from + i] = JS_DupValue(ctx, argv[i]);
+        p->u.array.count = old_len + argc;
+        p->prop[0].u.value = JS_NewInt32(ctx, old_len + argc);
+    }
+    else
+#endif
+    {
+        for(i = 0; i < argc; i++) {
+            if (JS_SetPropertyInt64(ctx, obj, from + i,
+                                    JS_DupValue(ctx, argv[i])) < 0)
+                goto exception;
+        }
     }
     if (JS_SetProperty(ctx, obj, JS_ATOM_length, JS_NewInt64(ctx, newLen)) < 0)
         goto exception;
@@ -1257,7 +1441,10 @@ static JSValue js_array_reverse(JSContext *ctx, JSValueConst this_val,
         goto exception;
 
     /* Special case fast arrays */
-    if (js_get_fast_array(ctx, obj, &arrp, &count32) && count32 == len) {
+    if (js_get_fast_array(ctx, obj, &arrp, &count32)) {
+        /* FIXME when can count32 not equal len? */
+        if ( count32 != len )
+            assert(0);
         uint32_t ll, hh;
 
         if (count32 > 1) {
@@ -1368,12 +1555,15 @@ static JSValue js_array_slice(JSContext *ctx, JSValueConst this_val,
        JS_CreateDataPropertyUint32() won't modify obj in case arr is
        an exotic object */
     /* Special case fast arrays */
-    if (js_get_fast_array(ctx, obj, &arrp, &count32) &&
-        js_is_fast_array(ctx, arr)) {
-        /* XXX: should share code with fast array constructor */
-        for (; k < final && k < count32; k++, n++) {
-            if (JS_CreateDataPropertyUint32(ctx, arr, n, JS_DupValue(ctx, arrp[k]), JS_PROP_THROW) < 0)
-                goto exception;
+    if (js_get_fast_array(ctx, obj, &arrp, &count32)) {
+        // FIXME
+        if ( js_is_fast_array(ctx, arr) )
+        {
+            /* XXX: should share code with fast array constructor */
+            for (; k < final && k < count32; k++, n++) {
+                if (JS_CreateDataPropertyUint32(ctx, arr, n, JS_DupValue(ctx, arrp[k]), JS_PROP_THROW) < 0)
+                    goto exception;
+            }
         }
     }
     /* Copy the remaining elements if any (handle case of inherited properties) */
@@ -1421,10 +1611,10 @@ static JSValue js_array_slice(JSContext *ctx, JSValueConst this_val,
 static JSValue js_array_copyWithin(JSContext *ctx, JSValueConst this_val,
                                    int argc, JSValueConst *argv)
 {
-    JSValue obj;
+    JSValue obj = JS_ToObject(ctx, this_val);
     int64_t len, from, to, final, count;
+    JSObject *p;
 
-    obj = JS_ToObject(ctx, this_val);
     if (js_get_length64(ctx, &len, obj))
         goto exception;
 
@@ -1655,6 +1845,7 @@ static JSValue js_array_sort(JSContext *ctx, JSValueConst this_val,
         goto exception;
 
     /* XXX: should special case fast arrays */
+    // FIXME fast array
     for (i = 0; i < len; i++) {
         if (pos >= array_size) {
             size_t new_size, slack;
@@ -1685,6 +1876,7 @@ static JSValue js_array_sort(JSContext *ctx, JSValueConst this_val,
         goto exception;
 
     /* XXX: should special case fast arrays */
+    // FIXME fast array
     while (n < pos) {
         if (array[n].str)
             JS_FreeValue(ctx, JS_MKPTR(JS_TAG_STRING, array[n].str));
@@ -1741,12 +1933,15 @@ void js_array_iterator_mark(JSRuntime *rt, JSValueConst val,
     }
 }
 
-JSValue js_create_array(JSContext *ctx, int len, JSValueConst *tab)
+static JSValue js_create_array_internal(JSContext *ctx, int len, JSValueConst *tab, int class_id)
 {
     JSValue obj;
     int i;
 
-    obj = JS_NewArray(ctx);
+    if ( class_id == JS_CLASS_FAST_ARRAY )
+        obj = JS_NewFastArray(ctx, NULL, 0);
+    else
+        obj = JS_NewArray(ctx);
     if (JS_IsException(obj))
         return JS_EXCEPTION;
     for(i = 0; i < len; i++) {
@@ -1756,6 +1951,16 @@ JSValue js_create_array(JSContext *ctx, int len, JSValueConst *tab)
         }
     }
     return obj;
+}
+
+JSValue js_create_array(JSContext *ctx, int len, JSValueConst *tab)
+{
+    return js_create_array_internal(ctx, len, tab, JS_CLASS_ARRAY);
+}
+
+JSValue js_create_fast_array(JSContext *ctx, int len, JSValueConst *tab)
+{
+    return js_create_array_internal(ctx, len, tab, JS_CLASS_FAST_ARRAY);
 }
 
 JSValue js_create_array_iterator(JSContext *ctx, JSValueConst this_val,
@@ -1917,6 +2122,16 @@ void JS_AddIntrinsicBasicArray(JSContext *ctx)
                                      JS_PROP_INITIAL_HASH_SIZE, 1);
     add_shape_property(ctx, &ctx->array_shape, NULL,
                        JS_ATOM_length, JS_PROP_WRITABLE | JS_PROP_LENGTH);
+
+    /* the fast_array prototype is an array */
+    ctx->class_proto[JS_CLASS_FAST_ARRAY] =
+        JS_NewObjectProtoClass2(ctx, ctx->class_proto[JS_CLASS_OBJECT],
+                                JS_CLASS_FAST_ARRAY);
+
+    ctx->fast_array_shape = js_new_shape2(ctx, get_proto_obj(ctx->class_proto[JS_CLASS_FAST_ARRAY]),
+                                          JS_PROP_INITIAL_HASH_SIZE, 1);
+    add_shape_property(ctx, &ctx->fast_array_shape, NULL,
+                       JS_ATOM_length, JS_PROP_WRITABLE | JS_PROP_LENGTH);
 }
 
 void JS_AddIntrinsicArray(JSContext *ctx)
@@ -1941,6 +2156,17 @@ void JS_AddIntrinsicArray(JSContext *ctx)
     JS_SetPropertyFunctionList(ctx, obj, js_array_funcs,
                                countof(js_array_funcs));
 
+    /* FastArray */
+    JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_FAST_ARRAY],
+                               js_array_proto_funcs,
+                               countof(js_array_proto_funcs));
+
+    obj = JS_NewGlobalCConstructor(ctx, "FastArray", js_fast_array_constructor, 1,
+                                   ctx->class_proto[JS_CLASS_FAST_ARRAY]);
+    ctx->fast_array_ctor = JS_DupValue(ctx, obj);
+    JS_SetPropertyFunctionList(ctx, obj, js_fast_array_funcs,
+                               countof(js_fast_array_funcs));
+
     /* XXX: create auto_initializer */
     {
         /* initialize Array.prototype[Symbol.unscopables] */
@@ -1953,6 +2179,9 @@ void JS_AddIntrinsicArray(JSContext *ctx)
         }
         JS_DefinePropertyValue(ctx, ctx->class_proto[JS_CLASS_ARRAY],
                                JS_ATOM_Symbol_unscopables, obj1,
+                               JS_PROP_CONFIGURABLE);
+        JS_DefinePropertyValue(ctx, ctx->class_proto[JS_CLASS_FAST_ARRAY],
+                               JS_ATOM_Symbol_unscopables, JS_DupValue(ctx, obj1),
                                JS_PROP_CONFIGURABLE);
     }
 

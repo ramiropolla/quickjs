@@ -454,7 +454,7 @@ typedef JSModuleDef *(JSInitModuleFunc)(JSContext *ctx,
 
 
 /* ffglitch: disable module loader */
-#if 1
+#if 0
 static JSModuleDef *js_module_loader_so(JSContext *ctx,
                                         const char *module_name)
 {

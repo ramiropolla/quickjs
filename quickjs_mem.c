@@ -462,6 +462,7 @@ void JS_ComputeMemoryUsage(JSRuntime *rt, JSMemoryUsage *s)
 
         switch(p->class_id) {
         case JS_CLASS_ARRAY:             /* u.array | length */
+        case JS_CLASS_FAST_ARRAY:        /* u.array | length */
         case JS_CLASS_ARGUMENTS:         /* u.array | length */
             s->array_count++;
             if (p->fast_array) {

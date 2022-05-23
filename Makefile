@@ -105,7 +105,7 @@ endif
 CFLAGS+=$(DEFINES)
 CFLAGS_DEBUG=$(CFLAGS) -O0
 CFLAGS_SMALL=$(CFLAGS) -Os
-CFLAGS_OPT=$(CFLAGS) -O2
+CFLAGS_OPT=$(CFLAGS) -O0
 CFLAGS_NOLTO:=$(CFLAGS_OPT)
 LDFLAGS=-g
 ifdef CONFIG_LTO
@@ -420,6 +420,7 @@ test: qjs
 	./qjs tests/test_loop.js
 	./qjs tests/test_std.js
 	./qjs tests/test_worker.js
+	./qjs tests/test_fast_array.js
 ifndef CONFIG_DARWIN
 	./qjs --bignum tests/test_bjson.js
 	./qjs examples/test_point.js

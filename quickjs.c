@@ -110,6 +110,7 @@ static JSClassID js_class_id_alloc = JS_CLASS_INIT_COUNT;
 JSClassShortDef const js_std_class_def[] = {
     { JS_ATOM_Object, NULL, NULL },                             /* JS_CLASS_OBJECT */
     { JS_ATOM_Array, js_array_finalizer, js_array_mark },       /* JS_CLASS_ARRAY */
+    { JS_ATOM_FastArray, js_array_finalizer, js_array_mark },   /* JS_CLASS_FAST_ARRAY */
     { JS_ATOM_Error, NULL, NULL }, /* JS_CLASS_ERROR */
     { JS_ATOM_Number, js_object_data_finalizer, js_object_data_mark }, /* JS_CLASS_NUMBER */
     { JS_ATOM_String, js_object_data_finalizer, js_object_data_mark }, /* JS_CLASS_STRING */
@@ -615,6 +616,7 @@ JSContext *JS_NewContextRaw(JSRuntime *rt)
     for(i = 0; i < rt->class_count; i++)
         ctx->class_proto[i] = JS_NULL;
     ctx->array_ctor = JS_NULL;
+    ctx->fast_array_ctor = JS_NULL;
     ctx->regexp_ctor = JS_NULL;
     ctx->promise_ctor = JS_NULL;
     init_list_head(&ctx->loaded_modules);
@@ -706,12 +708,15 @@ static void JS_MarkContext(JSRuntime *rt, JSContext *ctx,
     JS_MarkValue(rt, ctx->async_iterator_proto, mark_func);
     JS_MarkValue(rt, ctx->promise_ctor, mark_func);
     JS_MarkValue(rt, ctx->array_ctor, mark_func);
+    JS_MarkValue(rt, ctx->fast_array_ctor, mark_func);
     JS_MarkValue(rt, ctx->regexp_ctor, mark_func);
     JS_MarkValue(rt, ctx->function_ctor, mark_func);
     JS_MarkValue(rt, ctx->function_proto, mark_func);
 
     if (ctx->array_shape)
         mark_func(rt, &ctx->array_shape->header);
+    if (ctx->fast_array_shape)
+        mark_func(rt, &ctx->fast_array_shape->header);
 }
 
 void JS_FreeContext(JSContext *ctx)
@@ -770,11 +775,13 @@ void JS_FreeContext(JSContext *ctx)
     JS_FreeValue(ctx, ctx->async_iterator_proto);
     JS_FreeValue(ctx, ctx->promise_ctor);
     JS_FreeValue(ctx, ctx->array_ctor);
+    JS_FreeValue(ctx, ctx->fast_array_ctor);
     JS_FreeValue(ctx, ctx->regexp_ctor);
     JS_FreeValue(ctx, ctx->function_ctor);
     JS_FreeValue(ctx, ctx->function_proto);
 
     js_free_shape_null(ctx->rt, ctx->array_shape);
+    js_free_shape_null(ctx->rt, ctx->fast_array_shape);
 
     list_del(&ctx->link);
     remove_gc_object(&ctx->header);
@@ -3018,6 +3025,7 @@ JSValue JS_GetPropertyValue(JSContext *ctx, JSValueConst this_obj,
             goto slow_path;
         switch(p->class_id) {
         case JS_CLASS_ARRAY:
+        case JS_CLASS_FAST_ARRAY:
         case JS_CLASS_ARGUMENTS:
             return JS_DupValue(ctx, p->u.array.u.values[idx]);
         case JS_CLASS_INT8_ARRAY:
@@ -3259,6 +3267,11 @@ int delete_property(JSContext *ctx, JSObject *p, JSAtom atom)
             uint32_t idx;
             if (JS_AtomIsArrayIndex(ctx, &idx, atom) &&
                 idx < p->u.array.count) {
+                if ( p->class_id == JS_CLASS_FAST_ARRAY )
+                {
+                    /* No deleting of elements in FastArray */
+                    return FALSE;
+                }
                 if (p->class_id == JS_CLASS_ARRAY ||
                     p->class_id == JS_CLASS_ARGUMENTS) {
                     /* Special case deleting the last element of a fast Array */
@@ -3461,7 +3474,8 @@ retry:
             set_value(ctx, &pr->u.value, val);
             return TRUE;
         } else if (prs->flags & JS_PROP_LENGTH) {
-            assert(p->class_id == JS_CLASS_ARRAY);
+            assert(p->class_id == JS_CLASS_ARRAY
+                || p->class_id == JS_CLASS_FAST_ARRAY);
             assert(prop == JS_ATOM_length);
             return set_array_length(ctx, p, val, flags);
         } else if ((prs->flags & JS_PROP_TMASK) == JS_PROP_GETSET) {
@@ -3619,6 +3633,9 @@ retry:
             } else {
                 goto generic_create_prop;
             }
+        } else if ( (p->class_id == JS_CLASS_FAST_ARRAY) && __JS_AtomIsTaggedInt(prop)) {
+            uint32_t idx = __JS_AtomToUInt32(prop);
+            return add_fast_array_element_internal(ctx, p, idx + 1, val, flags);
         } else {
         generic_create_prop:
             ret = JS_CreateProperty(ctx, p, prop, val, JS_UNDEFINED, JS_UNDEFINED,
@@ -3683,6 +3700,16 @@ int JS_SetPropertyValue(JSContext *ctx, JSValueConst this_obj,
                 }
                 /* add element */
                 return add_fast_array_element(ctx, p, val, flags);
+            }
+            set_value(ctx, &p->u.array.u.values[idx], val);
+            break;
+        case JS_CLASS_FAST_ARRAY:
+            if (unlikely(idx >= (uint32_t)p->u.array.count)) {
+                /* fast path to add an element to the array */
+                if (!p->extensible)
+                    goto slow_path;
+                /* add element */
+                return add_fast_array_element_internal(ctx, p, idx + 1, val, flags);
             }
             set_value(ctx, &p->u.array.u.values[idx], val);
             break;
@@ -3866,6 +3893,19 @@ static int JS_CreateProperty(JSContext *ctx, JSObject *p,
                        the property */
                     len = idx + 1;
                     set_value(ctx, &plen->u.value, JS_NewUint32(ctx, len));
+                }
+            }
+        } else if (p->class_id == JS_CLASS_FAST_ARRAY) {
+            // FIXME check what leads here
+            uint32_t idx;
+            if (JS_AtomIsArrayIndex(ctx, &idx, prop)) {
+                if (idx >= p->u.array.count) {
+                    if (!p->extensible)
+                        goto not_extensible;
+                    return add_fast_array_element_internal(ctx, p, idx + 1, JS_DupValue(ctx, val), flags);
+                } else {
+                    goto generic_array;
+                    // FIXME check fallthrough
                 }
             }
         } else if (p->class_id >= JS_CLASS_UINT8C_ARRAY &&
@@ -4222,6 +4262,21 @@ int JS_DefineProperty(JSContext *ctx, JSValueConst this_obj,
                     if (flags & JS_PROP_HAS_VALUE) {
                         set_value(ctx, &p->u.array.u.values[idx], JS_DupValue(ctx, val));
                     }
+                    return TRUE;
+                }
+            }
+        } else if ( p->class_id == JS_CLASS_FAST_ARRAY ) {
+            // FIXME check what leads here
+            if (__JS_AtomIsTaggedInt(prop)) {
+                idx = __JS_AtomToUInt32(prop);
+                if (idx < p->u.array.count) {
+                    prop_flags = get_prop_flags(flags, JS_PROP_C_W_E);
+                    if (prop_flags != JS_PROP_C_W_E)
+                        return -1;
+                    if (flags & (JS_PROP_HAS_GET | JS_PROP_HAS_SET))
+                        return -1;
+                    if (flags & JS_PROP_HAS_VALUE)
+                        set_value(ctx, &p->u.array.u.values[idx], JS_DupValue(ctx, val));
                     return TRUE;
                 }
             }
@@ -5426,6 +5481,7 @@ static __maybe_unused void JS_DumpObject(JSRuntime *rt, JSObject *p)
                 printf(", ");
             switch (p->class_id) {
             case JS_CLASS_ARRAY:
+            case JS_CLASS_FAST_ARRAY:
             case JS_CLASS_ARGUMENTS:
                 JS_DumpValueShort(rt, p->u.array.u.values[i]);
                 break;
@@ -5657,7 +5713,8 @@ int JS_IsArray(JSContext *ctx, JSValueConst val)
         if (unlikely(p->class_id == JS_CLASS_PROXY))
             return js_proxy_isArray(ctx, val);
         else
-            return p->class_id == JS_CLASS_ARRAY;
+            return (p->class_id == JS_CLASS_ARRAY)
+                || (p->class_id == JS_CLASS_FAST_ARRAY);
     } else {
         return FALSE;
     }
@@ -6160,9 +6217,10 @@ JSValue *build_arg_list(JSContext *ctx, uint32_t *plen,
     if (!tab)
         return NULL;
     p = JS_VALUE_GET_OBJ(array_arg);
-    if ((p->class_id == JS_CLASS_ARRAY || p->class_id == JS_CLASS_ARGUMENTS) &&
-        p->fast_array &&
-        len == p->u.array.count) {
+    if ( ((p->class_id == JS_CLASS_FAST_ARRAY)
+       || ((p->class_id == JS_CLASS_ARRAY || p->class_id == JS_CLASS_ARGUMENTS) && p->fast_array))
+       && len == p->u.array.count )
+    {
         for(i = 0; i < len; i++) {
             tab[i] = JS_DupValue(ctx, p->u.array.u.values[i]);
         }

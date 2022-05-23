@@ -184,6 +184,7 @@ DEF(toJSON, "toJSON")
 /* class names */
 DEF(Object, "Object")
 DEF(Array, "Array")
+DEF(FastArray, "FastArray")
 DEF(Error, "Error")
 DEF(Number, "Number")
 DEF(String, "String")

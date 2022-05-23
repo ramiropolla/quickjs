@@ -901,6 +901,7 @@ static int JS_WriteObjectRec(BCWriterState *s, JSValueConst obj)
             }
             switch(p->class_id) {
             case JS_CLASS_ARRAY:
+            case JS_CLASS_FAST_ARRAY:
                 ret = JS_WriteArray(s, obj);
                 break;
             case JS_CLASS_OBJECT:

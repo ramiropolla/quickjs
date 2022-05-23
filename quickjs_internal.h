@@ -117,6 +117,7 @@ enum {
     /* classid tag        */    /* union usage   | properties */
     JS_CLASS_OBJECT = 1,        /* must be first */
     JS_CLASS_ARRAY,             /* u.array       | length */
+    JS_CLASS_FAST_ARRAY,        /* u.array       | length */
     JS_CLASS_ERROR,
     JS_CLASS_NUMBER,            /* u.object_data */
     JS_CLASS_STRING,            /* u.object_data */
@@ -407,11 +408,13 @@ struct JSContext {
     int binary_object_size;
 
     JSShape *array_shape;   /* initial shape for Array objects */
+    JSShape *fast_array_shape;   /* initial shape for FastArray objects */
 
     JSValue *class_proto;
     JSValue function_proto;
     JSValue function_ctor;
     JSValue array_ctor;
+    JSValue fast_array_ctor;
     JSValue regexp_ctor;
     JSValue promise_ctor;
     JSValue native_error_proto[JS_NATIVE_ERROR_COUNT];
@@ -860,7 +863,7 @@ struct JSObject {
             uint8_t extensible : 1;
             uint8_t free_mark : 1; /* only used when freeing objects with cycles */
             uint8_t is_exotic : 1; /* TRUE if object has exotic property handlers */
-            uint8_t fast_array : 1; /* TRUE if u.array is used for get/put (for JS_CLASS_ARRAY, JS_CLASS_ARGUMENTS and typed arrays) */
+            uint8_t fast_array : 1; /* TRUE if u.array is used for get/put (for JS_CLASS_ARRAY, JS_CLASS_FAST_ARRAY, JS_CLASS_ARGUMENTS and typed arrays) */
             uint8_t is_constructor : 1; /* TRUE if object is a constructor function */
             uint8_t is_uncatchable_error : 1; /* if TRUE, error is not catchable */
             uint8_t tmp_mark : 1; /* used in JS_WriteObjectRec() */
@@ -908,13 +911,13 @@ struct JSObject {
             int16_t magic;
         } cfunc;
         /* array part for fast arrays and typed arrays */
-        struct { /* JS_CLASS_ARRAY, JS_CLASS_ARGUMENTS, JS_CLASS_UINT8C_ARRAY..JS_CLASS_FLOAT64_ARRAY */
+        struct { /* JS_CLASS_ARRAY, JS_CLASS_FAST_ARRAY, JS_CLASS_ARGUMENTS, JS_CLASS_UINT8C_ARRAY..JS_CLASS_FLOAT64_ARRAY */
             union {
-                uint32_t size;          /* JS_CLASS_ARRAY, JS_CLASS_ARGUMENTS */
+                uint32_t size;          /* JS_CLASS_ARRAY, JS_CLASS_FAST_ARRAY, JS_CLASS_ARGUMENTS */
                 struct JSTypedArray *typed_array; /* JS_CLASS_UINT8C_ARRAY..JS_CLASS_FLOAT64_ARRAY */
             } u1;
             union {
-                JSValue *values;        /* JS_CLASS_ARRAY, JS_CLASS_ARGUMENTS */
+                JSValue *values;        /* JS_CLASS_ARRAY, JS_CLASS_FAST_ARRAY, JS_CLASS_ARGUMENTS */
                 void *ptr;              /* JS_CLASS_UINT8C_ARRAY..JS_CLASS_FLOAT64_ARRAY */
                 int8_t *int8_ptr;       /* JS_CLASS_INT8_ARRAY */
                 uint8_t *uint8_ptr;     /* JS_CLASS_UINT8_ARRAY, JS_CLASS_UINT8C_ARRAY */
@@ -1617,6 +1620,7 @@ static inline
 JSValue JS_NewObjectFromShape(JSContext *ctx, JSShape *sh, JSClassID class_id)
 {
     JSObject *p;
+    JSShape *array_shape;
 
     js_trigger_gc(ctx->rt, sizeof(JSObject));
     p = js_malloc(ctx, sizeof(JSObject));
@@ -1646,6 +1650,12 @@ JSValue JS_NewObjectFromShape(JSContext *ctx, JSShape *sh, JSClassID class_id)
     case JS_CLASS_OBJECT:
         break;
     case JS_CLASS_ARRAY:
+        array_shape = ctx->array_shape;
+        goto ARRAY_SHAPE;
+    case JS_CLASS_FAST_ARRAY:
+        array_shape = ctx->fast_array_shape;
+        goto ARRAY_SHAPE;
+ARRAY_SHAPE:
         {
             JSProperty *pr;
             p->is_exotic = 1;
@@ -1654,7 +1664,7 @@ JSValue JS_NewObjectFromShape(JSContext *ctx, JSShape *sh, JSClassID class_id)
             p->u.array.count = 0;
             p->u.array.u1.size = 0;
             /* the length property is always the first one */
-            if (likely(sh == ctx->array_shape)) {
+            if (likely(sh == array_shape)) {
                 pr = &p->prop[0];
             } else {
                 /* only used for the first array */
@@ -2149,6 +2159,7 @@ __exception int convert_fast_array_to_array(JSContext *ctx, JSObject *p);
 int delete_property(JSContext *ctx, JSObject *p, JSAtom atom);
 
 int set_array_length(JSContext *ctx, JSObject *p, JSValue val, int flags);
+int add_fast_array_element_internal(JSContext *ctx, JSObject *p, uint32_t new_len, JSValue val, int flags);
 int add_fast_array_element(JSContext *ctx, JSObject *p, JSValue val, int flags);
 
 static inline void js_free_desc(JSContext *ctx, JSPropertyDescriptor *desc)
@@ -2568,7 +2579,9 @@ BOOL js_is_fast_array(JSContext *ctx, JSValueConst obj)
     /* Try and handle fast arrays explicitly */
     if (JS_VALUE_GET_TAG(obj) == JS_TAG_OBJECT) {
         JSObject *p = JS_VALUE_GET_OBJ(obj);
-        if (p->class_id == JS_CLASS_ARRAY && p->fast_array) {
+        if ( p->class_id == JS_CLASS_FAST_ARRAY
+          || (p->class_id == JS_CLASS_ARRAY && p->fast_array) )
+        {
             return TRUE;
         }
     }
@@ -2583,7 +2596,9 @@ BOOL js_get_fast_array(JSContext *ctx, JSValueConst obj,
     /* Try and handle fast arrays explicitly */
     if (JS_VALUE_GET_TAG(obj) == JS_TAG_OBJECT) {
         JSObject *p = JS_VALUE_GET_OBJ(obj);
-        if (p->class_id == JS_CLASS_ARRAY && p->fast_array) {
+        if ( p->class_id == JS_CLASS_FAST_ARRAY
+          || (p->class_id == JS_CLASS_ARRAY && p->fast_array) )
+        {
             *countp = p->u.array.count;
             *arrpp = p->u.array.u.values;
             return TRUE;
@@ -3308,6 +3323,7 @@ typedef struct JSArrayIteratorData {
 } JSArrayIteratorData;
 
 JSValue js_create_array(JSContext *ctx, int len, JSValueConst *tab);
+JSValue js_create_fast_array(JSContext *ctx, int len, JSValueConst *tab);
 
 JSValue js_array_iterator_next(JSContext *ctx, JSValueConst this_val,
                                int argc, JSValueConst *argv,
@@ -3361,6 +3377,7 @@ int js_proxy_isExtensible(JSContext *ctx, JSValueConst obj);
 int js_proxy_preventExtensions(JSContext *ctx, JSValueConst obj);
 
 int js_proxy_isArray(JSContext *ctx, JSValueConst obj);
+int js_proxy_isFastArray(JSContext *ctx, JSValueConst obj);
 
 
 void js_map_finalizer(JSRuntime *rt, JSValue val);

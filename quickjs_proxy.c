@@ -866,6 +866,18 @@ int js_proxy_isArray(JSContext *ctx, JSValueConst obj)
     return JS_IsArray(ctx, s->target);
 }
 
+int js_proxy_isFastArray(JSContext *ctx, JSValueConst obj)
+{
+    JSProxyData *s = JS_GetOpaque(obj, JS_CLASS_PROXY);
+    if (!s)
+        return FALSE;
+    if (s->is_revoked) {
+        JS_ThrowTypeErrorRevokedProxy(ctx);
+        return -1;
+    }
+    return JS_IsFastArray(ctx, s->target);
+}
+
 const JSClassExoticMethods js_proxy_exotic_methods = {
     .get_own_property = js_proxy_get_own_property,
     .define_own_property = js_proxy_define_own_property,
